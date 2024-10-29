@@ -66,10 +66,11 @@ prompt_pure_set_title() {
 
 	# Show hostname if connected via SSH.
 	local hostname=
-	if [[ -n $prompt_pure_state[username] ]]; then
-		# Expand in-place in case ignore-escape is used.
-		hostname="${(%):-(%m) }"
-	fi
+	hostname="${(%):-%n@%m: }"
+	# if [[ -n $prompt_pure_state[username] ]]; then
+	# 	# Expand in-place in case ignore-escape is used.
+	# 	hostname="${(%):-(%m) }"
+	# fi
 
 	local -a opts
 	case $1 in
@@ -140,7 +141,7 @@ prompt_pure_preprompt_render() {
 	[[ -n $prompt_pure_state[username] ]] && preprompt_parts+=($prompt_pure_state[username])
 
 	# Set the path.
-	preprompt_parts+=('%F{${prompt_pure_colors[path]}}%~%f')
+	preprompt_parts+=('%F{${prompt_pure_colors[path]}}%1~%f')
 
 	# Git branch and dirty status info.
 	typeset -gA prompt_pure_vcs_info
@@ -712,7 +713,14 @@ prompt_pure_state_setup() {
 	[[ -z "${CODESPACES}" ]] && prompt_pure_is_inside_container && username='%F{$prompt_pure_colors[user]}%n%f'"$hostname"
 
 	# Show `username@host` if root, with username in default color.
-	[[ $UID -eq 0 ]] && username='%F{$prompt_pure_colors[user:root]}%n%f'"$hostname"
+	if [ $UID -eq 0 ]; then
+		username='%B%F{$prompt_pure_colors[user:root]}%n%f'
+		if [ -n "$ssh_connection" ]; then
+			username+="$hostname"'%b'
+		else
+			username+='%b'
+		fi
+	fi
 
 	typeset -gA prompt_pure_state
 	prompt_pure_state[version]="1.23.0"
@@ -858,7 +866,7 @@ prompt_pure_setup() {
 	PROMPT+=$prompt_indicator
 
 	# Indicate continuation prompt by … and use a darker color for it.
-	PROMPT2='%F{$prompt_pure_colors[prompt:continuation]}… %(1_.%_ .%_)%f'$prompt_indicator
+	PROMPT2='%F{$prompt_pure_colors[prompt:continuation]}%(1_.%_ .%_)%f'$prompt_indicator
 
 	# Store prompt expansion symbols for in-place expansion via (%). For
 	# some reason it does not work without storing them in a variable first.
