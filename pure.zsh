@@ -66,10 +66,11 @@ prompt_pure_set_title() {
 
 	# Show hostname if connected via SSH.
 	local hostname=
-	if [[ -n $prompt_pure_state[username] ]]; then
-		# Expand in-place in case ignore-escape is used.
-		hostname="${(%):-(%m) }"
-	fi
+	hostname="${(%):-%n@%m: }"
+	# if [[ -n $prompt_pure_state[username] ]]; then
+	# 	# Expand in-place in case ignore-escape is used.
+	# 	hostname="${(%):-(%m) }"
+	# fi
 
 	local -a opts
 	case $1 in
@@ -118,6 +119,17 @@ prompt_pure_set_colors() {
 	done
 }
 
+# get the parent directory of the current path
+prompt_pure_parent_dir_path() {
+	local cwd=$(pwd)
+	if [ "$cwd" != "$HOME" ]; then
+		local dir=$(dirname "$cwd")
+		if [ "$dir" != "/" ]; then
+			print "${dir/#$HOME/~}/"
+		fi
+	fi
+}
+
 prompt_pure_preprompt_render() {
 	setopt localoptions noshwordsplit
 
@@ -140,7 +152,7 @@ prompt_pure_preprompt_render() {
 	[[ -n $prompt_pure_state[username] ]] && preprompt_parts+=($prompt_pure_state[username])
 
 	# Set the path.
-	preprompt_parts+=('%F{${prompt_pure_colors[path]}}%~%f')
+	preprompt_parts+=('%F{${prompt_pure_colors[path]}}$(prompt_pure_parent_dir_path)%K%1~%k%f')
 
 	# Git branch and dirty status info.
 	typeset -gA prompt_pure_vcs_info
@@ -163,6 +175,9 @@ prompt_pure_preprompt_render() {
 	# Execution time.
 	[[ -n $prompt_pure_cmd_exec_time ]] && preprompt_parts+=('%F{$prompt_pure_colors[execution_time]}${prompt_pure_cmd_exec_time}%f')
 
+	# last command non-zero exit code
+	local preprompt_exit_code=('%(?.. %F{$prompt_pure_colors[prompt:error]}(%?%)%f)')
+
 	local cleaned_ps1=$PROMPT
 	local -H MATCH MBEGIN MEND
 	if [[ $PROMPT = *$prompt_newline* ]]; then
@@ -176,6 +191,7 @@ prompt_pure_preprompt_render() {
 	local -ah ps1
 	ps1=(
 		${(j. .)preprompt_parts}  # Join parts, space separated.
+		$preprompt_exit_code      # non-zero exit code
 		$prompt_newline           # Separate preprompt and prompt.
 		$cleaned_ps1
 	)
@@ -717,7 +733,14 @@ prompt_pure_state_setup() {
 	[[ -z "${CODESPACES}" ]] && prompt_pure_is_inside_container && username='%F{$prompt_pure_colors[user]}%n%f'"$hostname"
 
 	# Show `username@host` if root, with username in default color.
-	[[ $UID -eq 0 ]] && username='%F{$prompt_pure_colors[user:root]}%n%f'"$hostname"
+	if [ $UID -eq 0 ]; then
+		username='%B%F{$prompt_pure_colors[user:root]}%n%f'
+		if [ -n "$ssh_connection" ]; then
+			username+="$hostname"'%b'
+		else
+			username+='%b'
+		fi
+	fi
 
 	typeset -gA prompt_pure_state
 	prompt_pure_state[version]="1.26.0"
@@ -869,7 +892,7 @@ prompt_pure_setup() {
 	PROMPT+=$prompt_indicator
 
 	# Indicate continuation prompt by … and use a darker color for it.
-	PROMPT2='%F{$prompt_pure_colors[prompt:continuation]}… %(1_.%_ .%_)%f'$prompt_indicator
+	PROMPT2='%F{$prompt_pure_colors[prompt:continuation]}%(1_.%_ .%_)%f'$prompt_indicator
 
 	# Store prompt expansion symbols for in-place expansion via (%). For
 	# some reason it does not work without storing them in a variable first.
