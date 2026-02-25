@@ -68,11 +68,11 @@ prompt_pure_set_title() {
 	esac
 
 	# Show hostname if connected via SSH and host display is enabled.
-	local hostname=
-	if (( psvar[13] )) && (( ${prompt_pure_state[show_host]:-1} )); then
-		# Expand in-place in case ignore-escape is used.
-		hostname="${(%):-(%m) }"
-	fi
+	local hostname="${(%):-%n@%m: }"
+	# if (( psvar[13] )) && (( ${prompt_pure_state[show_host]:-1} )); then
+	# 	# Expand in-place in case ignore-escape is used.
+	# 	hostname="${(%):-(%m) }"
+	# fi
 
 	local -a opts
 	case $1 in
@@ -1070,6 +1070,14 @@ prompt_pure_preview() {
 	print -P "%F{$c[prompt:continuation]}… if%f %F{$c[prompt:success]}${PURE_PROMPT_SYMBOL:-❯}%f  continuation prompt"
 }
 
+# Gets the parent directory of the current path.
+prompt_pure_parent_dir_path() {
+	if [ "$PWD" != "$HOME" ]; then
+		local dir=$(dirname "$PWD")
+		[[ "$dir" != "/" ]] && print "${dir/#$HOME/~}/"
+	fi
+}
+
 prompt_pure_setup() {
 	# Prevent percentage showing up if output doesn't end with a newline.
 	export PROMPT_EOL_MARK=''
@@ -1140,6 +1148,12 @@ prompt_pure_setup() {
 	typeset -gA prompt_pure_vcs_info
 	typeset -g prompt_pure_git_branch_color=$prompt_pure_colors[git:branch]
 
+	local ssh_connection=${SSH_CONNECTION:-$PROMPT_PURE_SSH_CONNECTION}
+	local username='%F{$prompt_pure_colors['"${prompt_pure_state[user_color]:-user}"']}%n%f'
+
+	[[ -n "$ssh_connection" ]] && username+='%F{$prompt_pure_colors[host]}@%m%f'
+	[[ $UID -eq 0 ]] && username="%B$username%b"
+
 	# Construct PROMPT once, both preprompt and prompt line. Kept
 	# dynamic via variables and psvar[12-21], updated each render
 	# in prompt_pure_preprompt_render. Numbering starts at 12 for
@@ -1167,13 +1181,13 @@ prompt_pure_setup() {
 	# Preprompt line: each %(NV..) section only renders when its psvar is non-empty.
 	PROMPT='%(22V.%F{$prompt_pure_colors[custom:prefix]}%22v%f .)'
 	PROMPT+='%(12V.%F{$prompt_pure_colors[suspended_jobs]}%12v%f .)'
-	local hostname_part=''
-	if (( prompt_pure_state[show_host] )); then
-		hostname_part='%F{$prompt_pure_colors[host]}@%m%f'
-	fi
-	PROMPT+='%(13V.%F{$prompt_pure_colors['"${prompt_pure_state[user_color]:-user}"']}%n%f'"${hostname_part}"' .)'
-	prompt_pure_set_path_separator
-	PROMPT+='${${prompt_pure_path_separator_dimmed:+$(prompt_pure_render_dimmed_path)}:-${prompt_pure_path_segment}}'
+
+	# Change default username.
+	PROMPT+="%(13V.$username .)"
+
+	# Change the background color of the last path component.
+	PROMPT+='%F{${prompt_pure_colors[path]}}$(prompt_pure_parent_dir_path)%K%1~%k%f'
+
 	PROMPT+='%(14V. %F{${prompt_pure_git_branch_color}}%14v%(15V.%F{$prompt_pure_colors[git:dirty]}%15v.)%f.)'
 	PROMPT+='%(16V. %F{$prompt_pure_colors[git:action]}%16v%f.)'
 	PROMPT+='%(17V. %F{$prompt_pure_colors[git:arrow]}%17v%f.)'
@@ -1181,6 +1195,9 @@ prompt_pure_setup() {
 	PROMPT+='%(21V. %F{$prompt_pure_colors[node_version]}%21v%f.)'
 	PROMPT+='%(19V. %F{$prompt_pure_colors[execution_time]}%19v%f.)'
 	PROMPT+='%(23V. %F{$prompt_pure_colors[custom:suffix]}%23v%f.)'
+
+	# Last command non-zero exit code.
+	PROMPT+='%(?.. %F{$prompt_pure_colors[prompt:error]}(%?%)%f)'
 
 	# Newline separating preprompt from prompt.
 	PROMPT+='${prompt_newline}'
@@ -1192,7 +1209,7 @@ prompt_pure_setup() {
 	PROMPT+=$prompt_indicator
 
 	# Indicate continuation prompt by … and use a darker color for it.
-	PROMPT2='%F{$prompt_pure_colors[prompt:continuation]}… %(1_.%_ .%_)%f'$prompt_indicator
+	PROMPT2='%F{$prompt_pure_colors[prompt:continuation]}%(1_.%_ .%_)%f'$prompt_indicator
 
 	# Store prompt expansion symbols for in-place expansion via (%). For
 	# some reason it does not work without storing them in a variable first.
